@@ -1,0 +1,4 @@
+httpx==0.28.1
+PyYAML==6.0.3
+# zoneinfo needs an IANA tz database; Windows has none built in.
+tzdata>=2024.1

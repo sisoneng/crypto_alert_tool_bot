@@ -1,0 +1,19 @@
+timezone_display: [America/New_York, Asia/Manila]
+forms: ["8-K", "S-1", "S-1/A", "S-3", "424B4", "4", "SCHEDULE 13D", "SCHEDULE 13G", "10-Q", "10-K"]
+watchlist_tickers: [MSTR, COIN, MARA, RIOT, CLSK, HOOD, GLXY]
+watchlist_ciks: []          # for ETF trusts / filers without tickers
+keywords: [bitcoin, ethereum, ether, solana, XRP, "digital asset", "crypto asset", stablecoin, staking, "spot ETF"]
+max_alerts_per_run: 15      # overflow is batched into one digest message
+
+# Full-text search over filing text (secondary detector, lags by minutes to hours).
+# Base forms only: "S-1" already includes S-1/A. Empty list disables it.
+# 10-K/10-Q are left out on purpose: many mention bitcoin in boilerplate risk factors.
+fulltext_forms: ["8-K", "S-1"]
+
+# Priority rules are implemented in sec_sentinel/priority.py (not read from here).
+#   high:   watchlist filer AND form 8-K AND items intersect [1.01, 2.01, 7.01, 8.01]
+#   high:   form S-1 or S-1/A AND keyword match (filer name or full-text)
+#   high:   SEC press release AND keyword match (headline or summary)
+#   medium: watchlist filer, any configured form
+#   medium: non-watchlist filer AND keyword match (filer name or full-text)
+#   low:    everything else in the configured forms -> log only, no alert
