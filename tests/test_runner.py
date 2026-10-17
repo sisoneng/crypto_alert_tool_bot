@@ -8,6 +8,7 @@ import respx
 from conftest import RecordingSender, fixture_bytes
 from sec_sentinel.config import parse_config
 from sec_sentinel.edgar import ATOM_URL
+from sec_sentinel.fedreg import FEDREG_URL
 from sec_sentinel.fulltext import FULLTEXT_URL
 from sec_sentinel.press import PRESS_RSS_URL
 from sec_sentinel.runner import run_once
@@ -44,7 +45,9 @@ def feeds():
         mock.get(FULLTEXT_URL).mock(return_value=httpx.Response(200, content=fixture_bytes("fulltext_empty.json")))
         press = mock.get(PRESS_RSS_URL)
         press.mock(return_value=httpx.Response(200, content=fixture_bytes("press_releases_earlier.rss")))
-        yield {"8-K": eight_k, "4": form4, "fts:bitcoin": bitcoin, "press": press}
+        fedreg = mock.get(FEDREG_URL)
+        fedreg.mock(return_value=httpx.Response(200, content=fixture_bytes("fedreg_empty.json")))
+        yield {"8-K": eight_k, "4": form4, "fts:bitcoin": bitcoin, "press": press, "fedreg": fedreg}
 
 
 def run(tmp_path, sec, sender, config=None, now=NOW):
@@ -274,11 +277,62 @@ def test_existing_v1_state_arms_fulltext_silently(tmp_path, sec, feeds):
     use_full_8k_feed(feeds)
     sender = RecordingSender()
     run(tmp_path, sec, sender, fulltext_config(keywords=["bitcoin", "rural"]))
-    assert sender.messages[0] == (
-        "🛰️ sec-sentinel armed new sources — seeded 10 full-text matches and 19 press releases."
-    )
+    # Press releases re-arm too, but their keys are already in `seen`, so the zero count is omitted.
+    assert sender.messages[0] == "🛰️ sec-sentinel armed new sources — seeded 10 full-text matches."
     assert len(sender.messages) == 2  # plus the new feed filing matching "rural"
     assert "NATIONAL RURAL" in sender.messages[1]
+
+
+# --- config scope changes ---
+
+
+def test_adding_keywords_seeds_only_their_matches(tmp_path, sec, feeds):
+    set_fulltext(feeds, "fulltext_bitcoin.json")
+    run(tmp_path, sec, RecordingSender(), fulltext_config(keywords=["spot ETF"]))  # "bitcoin" not watched yet
+
+    sender = RecordingSender()
+    run(tmp_path, sec, sender, fulltext_config(keywords=["spot ETF", "bitcoin"]))
+    assert sender.messages == [
+        "🛰️ sec-sentinel config changed — marked 10 full-text matches newly covered as seen."
+    ]
+    sender = RecordingSender()
+    run(tmp_path, sec, sender, fulltext_config(keywords=["spot ETF", "bitcoin"]))
+    assert sender.messages == []
+
+
+def test_adding_forms_seeds_only_those_forms(tmp_path, sec, feeds):
+    run(tmp_path, sec, RecordingSender(), make_config(forms=["8-K"]))  # Form 4 not watched yet
+
+    use_full_8k_feed(feeds)  # 2 genuinely new 8-Ks arrive in the same run
+    sender = RecordingSender()
+    run(tmp_path, sec, sender, make_config(forms=["8-K", "4"]))
+    assert sender.messages[0] == "🛰️ sec-sentinel config changed — marked 6 filings newly covered as seen."
+    assert len(sender.messages) == 3  # the 2 new 8-Ks in the old scope still alert
+    assert "LQR House" in "".join(sender.messages)
+
+
+def test_old_state_without_scopes_does_not_swallow_new_filings(tmp_path, sec, feeds):
+    run(tmp_path, sec, RecordingSender())
+    path = tmp_path / "state" / "seen.json"
+    doc = json.loads(path.read_text())
+    del doc["scopes"]
+    path.write_text(json.dumps(doc))
+
+    use_full_8k_feed(feeds)
+    sender = RecordingSender()
+    run(tmp_path, sec, sender)
+    assert len(sender.messages) == 2  # LQR + NATIONAL RURAL, no "config changed" message
+
+
+def test_new_scope_not_applied_while_feed_fails(tmp_path, sec, feeds):
+    run(tmp_path, sec, RecordingSender(), make_config(forms=["8-K"]))
+    feeds["4"].mock(return_value=httpx.Response(503))
+    with pytest.raises(RuntimeError, match="not seeding new forms"):
+        run(tmp_path, sec, RecordingSender(), make_config(forms=["8-K", "4"]))
+    feeds["4"].mock(return_value=httpx.Response(200, content=fixture_bytes("atom_4.xml")))
+    sender = RecordingSender()
+    run(tmp_path, sec, sender, make_config(forms=["8-K", "4"]))
+    assert sender.messages == ["🛰️ sec-sentinel config changed — marked 6 filings newly covered as seen."]
 
 
 def test_fulltext_failure_is_best_effort(tmp_path, sec, feeds):
@@ -366,3 +420,76 @@ def test_failed_press_send_is_retried(tmp_path, sec, feeds):
     sender = RecordingSender()
     run(tmp_path, sec, sender, press_config())
     assert len(sender.messages) == 1 and "Custody Crypto Assets" in sender.messages[0]
+
+
+# --- Federal Register / 19b-4 ---
+
+
+def fedreg_config(**overrides):
+    data = {"keywords": ["bitcoin", "solana", "digital asset"], "watchlist_ciks": [], "federal_register": True}
+    data.update(overrides)
+    return make_config(**data)
+
+
+def set_fedreg(feeds, fixture_name):
+    feeds["fedreg"].mock(return_value=httpx.Response(200, content=fixture_bytes(fixture_name)))
+
+
+def test_first_run_seeds_federal_register(tmp_path, sec, feeds):
+    set_fedreg(feeds, "fedreg_window.json")
+    sender = RecordingSender()
+    run(tmp_path, sec, sender, fedreg_config())
+    assert "19 press releases and 3 Federal Register documents" in sender.messages[0]
+    assert "fr:2026-21128" in seen(tmp_path)
+
+    sender = RecordingSender()
+    run(tmp_path, sec, sender, fedreg_config())
+    assert sender.messages == []
+
+
+def test_new_federal_register_documents_alert(tmp_path, sec, feeds):
+    run(tmp_path, sec, RecordingSender(), fedreg_config())  # armed with no documents
+    set_fedreg(feeds, "fedreg_window.json")
+    sender = RecordingSender()
+    result = run(tmp_path, sec, sender, fedreg_config())
+    assert result.alerts == 3
+    headers = sorted(m.split("\n")[0] for m in sender.messages)
+    assert headers == [
+        "🟡 MEDIUM | SEC — Federal Register notice",
+        "🟡 MEDIUM | SEC — Federal Register notice",
+        "🟡 MEDIUM | SEC — Federal Register proposed rule",
+    ]
+    assert all("\nPublished: 2026-10-1" in m for m in sender.messages)
+
+    sender = RecordingSender()
+    run(tmp_path, sec, sender, fedreg_config())
+    assert sender.messages == []
+
+
+def test_listing_decisions_sent_first_and_overflow_digested(tmp_path, sec, feeds):
+    run(tmp_path, sec, RecordingSender(), fedreg_config())
+    set_fedreg(feeds, "fedreg_crypto.json")  # 25 documents, 2 listing decisions
+    sender = RecordingSender()
+    result = run(tmp_path, sec, sender, fedreg_config())
+    assert result.alerts == 25
+    assert len(sender.messages) == 16  # 15 individual + 1 digest
+    assert [m.split("\n")[0] for m in sender.messages[:3]] == [
+        "🔴 HIGH | SEC — Federal Register notice",
+        "🔴 HIGH | SEC — Federal Register notice",
+        "🟡 MEDIUM | SEC — Federal Register notice",
+    ]
+    assert "Generic Listing Standards for Commodity-Based Trust Shares" in "".join(sender.messages[:2])
+    assert sender.messages[-1].startswith("📦 Digest: 10 more alerts this run")
+
+
+def test_federal_register_armed_on_upgrade_and_best_effort(tmp_path, sec, feeds):
+    run(tmp_path, sec, RecordingSender())  # older config: Federal Register off
+    feeds["fedreg"].mock(return_value=httpx.Response(503))
+    sender = RecordingSender()
+    result = run(tmp_path, sec, sender, fedreg_config())
+    assert not result.fedreg_ok and sender.messages == []  # not armed yet, no error alert
+
+    set_fedreg(feeds, "fedreg_window.json")
+    sender = RecordingSender()
+    run(tmp_path, sec, sender, fedreg_config())
+    assert sender.messages == ["🛰️ sec-sentinel armed new sources — seeded 3 Federal Register documents."]

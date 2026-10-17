@@ -116,3 +116,15 @@ def test_keyword_matches_plural():
     assert v.reasons == ("keyword: digital asset",)
     v = classify(make_filing("10-Q", "Global Stablecoins Inc"), set(), CONFIG_KEYWORDS)
     assert v.reasons == ("keyword: stablecoin",)
+
+
+def test_8a12b_with_keyword_is_high():
+    v = classify(make_filing("8-A12B", "Grayscale Solana Trust"), set(), CONFIG_KEYWORDS)
+    assert v.tier is Tier.HIGH
+    assert v.reasons == ("keyword: solana",)
+
+
+def test_485apos_fulltext_hit_is_medium():
+    v = classify(make_filing("485APOS", "ETF Opportunities Trust"), set(), CONFIG_KEYWORDS, ["solana"])
+    assert v.tier is Tier.MEDIUM
+    assert v.reasons == ("full-text: solana",)

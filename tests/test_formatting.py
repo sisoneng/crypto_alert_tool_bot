@@ -95,3 +95,20 @@ def test_press_release_alert():
         "Matched: keyword: crypto asset\n"
         f"🔗 {release.link}"
     )
+
+
+def test_federal_register_alert():
+    import json
+
+    from sec_sentinel.fedreg import parse_documents
+    from sec_sentinel.formatting import fedreg_alert
+
+    docs = {d.number: d for d in parse_documents(json.loads(fixture_bytes("fedreg_crypto.json")))}
+    doc = docs["2025-18258"]
+    text = format_alert(fedreg_alert(doc, Verdict(Tier.HIGH, ("listing decision", "full-text: bitcoin"))), ZONES)
+    lines = text.split("\n")
+    assert lines[0] == "🔴 HIGH | SEC — Federal Register notice"
+    assert lines[1].endswith("To Adopt Generic Listing Standards for Commodity-Based Trust Shares")
+    assert lines[2] == "Published: 2025-09-22"
+    assert lines[3] == "Matched: listing decision, full-text: bitcoin"
+    assert lines[4] == f"🔗 {doc.link}"

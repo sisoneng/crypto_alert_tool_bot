@@ -1,19 +1,52 @@
 timezone_display: [America/New_York, Asia/Manila]
-forms: ["8-K", "S-1", "S-1/A", "S-3", "424B4", "4", "SCHEDULE 13D", "SCHEDULE 13G", "10-Q", "10-K"]
-watchlist_tickers: [MSTR, COIN, MARA, RIOT, CLSK, HOOD, GLXY]
+# 8-A12B: exchange registration right before a fund/stock starts trading ("launching soon").
+# N-1A / 485APOS: 1940-Act fund registrations (some staking and futures crypto ETFs).
+# 424B3: prospectus, incl. crypto trusts at launch.
+forms: ["8-K", "S-1", "S-1/A", "S-3", "424B3", "424B4", "8-A12B", "N-1A", "485APOS",
+        "4", "SCHEDULE 13D", "SCHEDULE 13G", "10-Q", "10-K"]
+watchlist_tickers: [
+  MSTR, COIN, MARA, RIOT, CLSK, HOOD, GLXY,
+  # Spot crypto ETFs (all listed in SEC's company_tickers.json). They file rarely
+  # (quarterly 10-Q, occasional 8-K), so an alert from one usually matters.
+  GBTC, BTC, ETHE, ETH, GSOL, GDLC,   # Grayscale (BTC / ETH = Bitcoin / Ethereum Mini Trusts)
+  IBIT, ETHA,                         # BlackRock iShares
+  FBTC, FETH,                         # Fidelity
+  BITB, BSOL,                         # Bitwise
+  ARKB,                               # Ark 21Shares
+  HODL,                               # VanEck
+  EZBC, EZET,                         # Franklin Templeton
+  BTCO, QETH,                         # Invesco Galaxy
+  BTCW,                               # WisdomTree
+  BRRR,                               # CoinShares
+]
 watchlist_ciks: []          # for ETF trusts / filers without tickers
-keywords: [bitcoin, ethereum, ether, solana, XRP, "digital asset", "crypto asset", stablecoin, staking, "spot ETF"]
+# Coin and topic keywords, plus crypto-only ETF issuers (catch new funds whose coin isn't
+# listed here). Left out on purpose: Canary and Osprey (match unrelated filings), big
+# traditional issuers like Fidelity or Franklin (thousands of non-crypto filings; their
+# crypto funds have the coin in the name anyway), "tron" (matches "M-tron Industries").
+keywords: [bitcoin, ethereum, ether, solana, XRP, "digital asset", "crypto asset", stablecoin, staking, "spot ETF",
+           avalanche, chainlink, dogecoin, litecoin, cardano, polkadot, HBAR, hedera, SUI, BNB, hyperliquid,
+           Grayscale, Bitwise, 21Shares, CoinShares]
 max_alerts_per_run: 15      # overflow is batched into one digest message
 
 # Full-text search over filing text (secondary detector, lags by minutes to hours).
 # Base forms only: "S-1" already includes S-1/A. Empty list disables it.
+# 485APOS / N-1A / 8-A12B are usually filed by umbrella trusts ("ETF Opportunities Trust"),
+# so the crypto fund's name only shows up in the text.
 # 10-K/10-Q are left out on purpose: many mention bitcoin in boilerplate risk factors.
-fulltext_forms: ["8-K", "S-1"]
+fulltext_forms: ["8-K", "S-1", "N-1A", "485APOS", "8-A12B", "424B3"]
+
+# SEC documents in the Federal Register (federalregister.gov, the official US government
+# journal; not an SEC endpoint). Covers exchange 19b-4 filings to list crypto ETFs:
+# notices, proceedings, approvals and disapprovals. Published days after the exchange files.
+federal_register: true
 
 # Priority rules are implemented in sec_sentinel/priority.py (not read from here).
 #   high:   watchlist filer AND form 8-K AND items intersect [1.01, 2.01, 7.01, 8.01]
-#   high:   form S-1 or S-1/A AND keyword match (filer name or full-text)
+#   high:   form S-1, S-1/A or 8-A12B AND keyword match (filer name or full-text)
 #   high:   SEC press release AND keyword match (headline or summary)
+#   high:   Federal Register order approving/disapproving an exchange listing
 #   medium: watchlist filer, any configured form
 #   medium: non-watchlist filer AND keyword match (filer name or full-text)
+#   medium: any other Federal Register document mentioning a keyword
 #   low:    everything else in the configured forms -> log only, no alert

@@ -8,6 +8,7 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from .edgar import Filing
+from .fedreg import FedRegDoc
 from .press import PressRelease
 from .priority import Tier, Verdict
 
@@ -48,6 +49,13 @@ def press_alert(release: PressRelease, verdict: Verdict) -> Alert:
     return Alert(
         verdict.tier, verdict.reasons, "SEC", "Press release", release.title,
         release.published, True, "Published", release.link,
+    )
+
+
+def fedreg_alert(doc: FedRegDoc, verdict: Verdict) -> Alert:
+    return Alert(
+        verdict.tier, verdict.reasons, "SEC", f"Federal Register {doc.doc_type.lower()}", doc.title,
+        doc.published, False, "Published", doc.link,
     )
 
 

@@ -6,10 +6,13 @@ Detectors:
 - **Latest-filings feed** (primary): one EDGAR Atom feed per form type. Watchlist tickers are resolved to CIKs, keywords are matched against filer names, and 8-K item numbers are read from each entry. The company submissions JSON is used as a fallback for a watchlist 8-K whose entry lists no items.
 - **Full-text search** (secondary): searches filing text for each keyword over the last 3 days, for the forms in `fulltext_forms`. It lags by minutes to hours. A filing alerts at most once, whichever detector sees it first.
 - **SEC press releases**: the official press release RSS feed (enforcement and policy actions), matched on headline and summary.
+- **Federal Register** (`federal_register: true`): SEC documents on federalregister.gov, the official US government journal (not an SEC endpoint). This covers exchange **19b-4** filings to list crypto ETFs: notices, proceedings, approvals and disapprovals. They are published days after the exchange files them.
+
+ETF-related forms are watched too: **8-A12B** (registration right before trading starts), **N-1A / 485APOS** (1940-Act funds) and **424B3** (prospectus). For 485APOS, N-1A and 8-A12B the filer is often an umbrella trust ("ETF Opportunities Trust"), so the crypto fund's name only shows up through full-text search.
 
 Keywords match whole words, case-insensitively, plus a plural "s" ("crypto asset" matches "Crypto Assets"; "ether" does not match "Aether").
 
-Tiers: 🔴 HIGH for a watchlist 8-K with item 1.01, 2.01, 7.01 or 8.01, an S-1/S-1/A with a keyword match, or a press release with a keyword match. 🟡 MEDIUM for any other watchlist filing or keyword match. Everything else is logged only.
+Tiers: 🔴 HIGH for a watchlist 8-K with item 1.01, 2.01, 7.01 or 8.01; an S-1, S-1/A or 8-A12B with a keyword match; a press release with a keyword match; or a Federal Register order approving or disapproving an exchange listing. 🟡 MEDIUM for any other watchlist filing, keyword match or Federal Register match. Everything else is logged only.
 
 ## Run
 
@@ -20,7 +23,7 @@ python -m sec_sentinel --once --dry-run      # print instead of sending
 python -m sec_sentinel --once                # needs TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 ```
 
-The first run with no `state/seen.json` marks every current filing (and full-text match) as seen and sends only a "sec-sentinel armed" message. Delete `state/seen.json` to re-arm. A state file from an older version keeps working: any detector it hasn't seen before seeds itself silently on its first run.
+The first run with no `state/seen.json` marks every current filing (and full-text match) as seen and sends only a "sec-sentinel armed" message. Delete `state/seen.json` to re-arm. A state file from an older version keeps working: any detector it hasn't seen before seeds itself silently on its first run. Changing `forms`, `fulltext_forms` or `keywords` later doesn't flood the chat either: items that are only newly covered by the change are marked as seen silently (one "config changed" message), while genuinely new filings still alert.
 
 ## Test
 

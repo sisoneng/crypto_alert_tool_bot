@@ -1,4 +1,8 @@
-"""SEC HTTP client: required User-Agent, global rate limit, retry with backoff."""
+"""SEC HTTP client: required User-Agent, global rate limit, retry with backoff.
+
+Also used for the Federal Register API, so every outbound request shares the
+same polite User-Agent and rate limit.
+"""
 
 from __future__ import annotations
 
@@ -66,7 +70,7 @@ class SecClient:
         self._max_tries = max_tries
         self._backoff_base = backoff_base
 
-    def get(self, url: str, params: dict[str, str] | None = None) -> httpx.Response:
+    def get(self, url: str, params: dict[str, str] | list[tuple[str, str]] | None = None) -> httpx.Response:
         last_error: Exception | None = None
         for attempt in range(1, self._max_tries + 1):
             self._limiter.wait()

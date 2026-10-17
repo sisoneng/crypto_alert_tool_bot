@@ -3,6 +3,8 @@
 - seen:    keys each detector has processed (feed: accession; full-text: "fts:" + accession)
 - alerted: accessions already alerted by any detector, so one filing alerts once
 - armed:   detectors that have been seeded; a new detector seeds silently on its first run
+- scopes:  config each detector was seeded for (forms, keywords); when it changes, newly
+           covered items are seeded silently instead of alerting as "new"
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MAX_SEEN = 5000
-STATE_VERSION = 2
+STATE_VERSION = 3
 
 
 def atomic_write(path: Path, data: bytes) -> None:
@@ -37,6 +39,7 @@ class State:
     seen: list[str] = field(default_factory=list)  # oldest first
     alerted: list[str] = field(default_factory=list)  # oldest first
     armed: list[str] = field(default_factory=list)
+    scopes: dict[str, list[str]] = field(default_factory=dict)
     heartbeat_day: str | None = None  # UTC date of the last heartbeat
     scanned: int = 0  # new filings processed since the last heartbeat
     alerts: int = 0  # alerts sent since the last heartbeat
@@ -79,6 +82,7 @@ def load_state(path: Path) -> State:
         seen=seen,
         alerted=list(data.get("alerted") or []),
         armed=list(armed),
+        scopes={k: list(v) for k, v in (data.get("scopes") or {}).items()},
         heartbeat_day=heartbeat.get("day"),
         scanned=int(heartbeat.get("scanned", 0)),
         alerts=int(heartbeat.get("alerts", 0)),
@@ -92,6 +96,7 @@ def save_state(path: Path, state: State) -> None:
     doc = {
         "version": STATE_VERSION,
         "armed": state.armed,
+        "scopes": state.scopes,
         "heartbeat": {"day": state.heartbeat_day, "scanned": state.scanned, "alerts": state.alerts},
         "alerted": state.alerted,
         "seen": state.seen,

@@ -22,6 +22,7 @@ class Config:
     keywords: tuple[str, ...]
     max_alerts_per_run: int
     fulltext_forms: tuple[str, ...] = ()  # empty disables full-text search
+    federal_register: bool = False  # SEC documents on federalregister.gov (19b-4 filings)
 
 
 def _str_list(data: dict, key: str, *, required: bool) -> tuple[str, ...]:
@@ -59,6 +60,10 @@ def parse_config(data: dict) -> Config:
         # already include their amendments.
         raise ConfigError("fulltext_forms must list base forms only (S-1 includes S-1/A)")
 
+    federal_register = data.get("federal_register", False)
+    if not isinstance(federal_register, bool):
+        raise ConfigError("federal_register must be true or false")
+
     return Config(
         timezone_display=zones,
         forms=_str_list(data, "forms", required=True),
@@ -67,6 +72,7 @@ def parse_config(data: dict) -> Config:
         keywords=_str_list(data, "keywords", required=False),
         max_alerts_per_run=max_alerts,
         fulltext_forms=fulltext_forms,
+        federal_register=federal_register,
     )
 
 
