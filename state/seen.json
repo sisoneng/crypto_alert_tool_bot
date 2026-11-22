@@ -85,9 +85,9 @@
   ]
  },
  "heartbeat": {
-  "day": "2026-11-21",
-  "scanned": 201,
-  "alerts": 3
+  "day": "2026-11-22",
+  "scanned": 0,
+  "alerts": 0
  },
  "alerted": [
   "0001193125-26-424688",
